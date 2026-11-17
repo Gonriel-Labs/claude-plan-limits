@@ -102,9 +102,17 @@ async function compact($: EngineInterface) {
   }
 }
 
+// The band reads the clock only when it is drawn, and nothing redraws it while
+// the chat sits idle: redraw it every minute so the reset countdown runs and a
+// window that resets drops to 0 % without a new message.
+const REDRAW_MS = 60_000
+let redraw: { cancel: () => void } | undefined
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const result = await next(e)
+    redraw?.cancel()
+    redraw = $.clock.every(REDRAW_MS, () => $.ui.invalidate('ui.render'))
     const usage = await $.session.usage()
     await setLimits($, usage.rateLimits)
     await update($, usd, () => usage.cost?.usd ?? null)
