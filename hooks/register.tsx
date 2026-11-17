@@ -52,6 +52,19 @@ function tokenText(count: number) {
   return `${count}`
 }
 
+// Rate limits are the account's, not the session's: the last ones seen are
+// kept across sessions so the band shows them before this session's first call.
+async function setLimits($: EngineInterface, next: Limit[]) {
+  if (next.length > 0) {
+    await update($, limits, () => next)
+    await $.store.set('limits', next)
+    return
+  }
+  if ((await read($, limits)).length > 0) return
+  const kept = await $.store.get('limits')
+  if (Array.isArray(kept)) await update($, limits, () => kept as Limit[])
+}
+
 async function setContext($: EngineInterface, fill: number | undefined) {
   if (fill === undefined) return
   await update($, context, () => fill)
@@ -93,14 +106,19 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const result = await next(e)
     const usage = await $.session.usage()
-    await update($, limits, () => usage.rateLimits)
+    await setLimits($, usage.rateLimits)
     await update($, usd, () => usage.cost?.usd ?? null)
     await setContext($, usage.context.tokens)
+    // Opening an existing chat: count its transcript now, not at the next prompt.
+    void $.session
+      .id()
+      .then(id => recount($, id))
+      .catch(() => undefined)
     return result
   })
 
   on('session.measure', async ($, e, next) => {
-    await update($, limits, () => e.rateLimits)
+    await setLimits($, e.rateLimits)
     await update($, usd, () => e.cost?.usd ?? null)
     await setContext($, e.context.tokens)
     return next(e)
@@ -135,9 +153,13 @@ export const register: Register = on => {
       <Box flexDirection="row">
         <Box flexDirection="row" flexGrow={1}>
           {current.map((limit, i) => {
-            const percent = Math.max(0, Math.min(100, limit.percentUsed))
+            // A window whose reset time has passed starts over at zero: the
+            // saved reading may predate it, so trust the reset over the figure.
+            const isReset = limit.resetsAt !== undefined && Date.parse(limit.resetsAt) <= now
+            const used = isReset ? 0 : limit.percentUsed
+            const percent = Math.max(0, Math.min(100, used))
             const filled = Math.round((percent / 100) * SEGMENTS)
-            const color = colorFor(limit.percentUsed)
+            const color = colorFor(used)
             const reset = resetText(limit.resetsAt, now)
             return (
               <Text key={limit.kind}>
@@ -145,7 +167,7 @@ export const register: Register = on => {
                 <Text dimColor>{LABELS[limit.kind] ?? limit.kind}  </Text>
                 <Text color={color}>{'■'.repeat(filled)}</Text>
                 <Text color={EMPTY_COLOR}>{'□'.repeat(SEGMENTS - filled)}  </Text>
-                <Text color={color} bold>{`${Math.round(limit.percentUsed)}%`}</Text>
+                <Text color={color} bold>{`${Math.round(used)}%`}</Text>
                 {reset ? <Text dimColor>{`  ↻ ${reset}`}</Text> : ''}
               </Text>
             )

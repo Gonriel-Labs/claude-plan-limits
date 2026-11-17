@@ -3,7 +3,19 @@
 const fs = require('fs')
 const path = require('path')
 
-const transcript = process.argv[2]
+// The argument is a transcript path, or a session id whose transcript is
+// looked up under the projects folder (at session start no path is given).
+function findTranscript(arg) {
+  if (!arg || fs.existsSync(arg)) return arg
+  const base = path.join(process.env.CLAUDE_CONFIG_DIR || path.join(require('os').homedir(), '.claude'), 'projects')
+  if (!fs.existsSync(base)) return arg
+  for (const dir of fs.readdirSync(base)) {
+    const candidate = path.join(base, dir, `${arg}.jsonl`)
+    if (fs.existsSync(candidate)) return candidate
+  }
+  return arg
+}
+const transcript = findTranscript(process.argv[2])
 const files = [transcript]
 const subagents = path.join(transcript.replace(/\.jsonl$/, ''), 'subagents')
 if (fs.existsSync(subagents)) {
