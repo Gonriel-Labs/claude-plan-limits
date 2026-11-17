@@ -1,0 +1,5 @@
+{
+  "name": "claude-plan-limits",
+  "owner": { "name": "mark-quispe" },
+  "plugins": [{ "name": "plan-limits", "source": "./" }]
+}

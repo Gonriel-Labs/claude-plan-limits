@@ -1,0 +1,199 @@
+import { atom, read, update } from 'claude-code'
+import type { EngineInterface, Register } from 'claude-code'
+
+import type { Limit } from '../types'
+
+const limits = atom({ plugin: 'plan-limits', key: 'limits' } as const, [] as Limit[])
+// Every token the session's turns reported, subagents and cache included.
+const tokens = atom({ plugin: 'plan-limits', key: 'tokens' } as const, 0)
+const usd = atom({ plugin: 'plan-limits', key: 'usd' } as const, null as number | null)
+// The live context window's fill, and whether a compaction asked from the
+// warning is pending (it hides the warning until the fill drops).
+const context = atom({ plugin: 'plan-limits', key: 'context' } as const, null as number | null)
+const isCompacting = atom({ plugin: 'plan-limits', key: 'isCompacting' } as const, false)
+
+const COMPACT_AT = 250_000
+
+const LABELS: Record<string, string> = {
+  five_hour: '5h',
+  seven_day: 'Semanal',
+  spend_limit: 'Gasto',
+}
+
+const SEGMENTS = 5
+
+// The concept palette: coral, amber past 70 %, red past 90 %, gray for what is left.
+const EMPTY_COLOR = '#888780'
+const WARNING_COLOR = '#EF9F27'
+const DIVIDER_COLOR = '#3A3A38'
+
+function colorFor(percent: number) {
+  if (percent >= 90) return '#E24B4A'
+  if (percent >= 70) return WARNING_COLOR
+  return '#D85A30'
+}
+
+function resetText(resetsAt: string | undefined, now: number) {
+  if (!resetsAt) return ''
+  const ms = Date.parse(resetsAt) - now
+  if (!Number.isFinite(ms) || ms <= 0) return ''
+  const minutes = Math.round(ms / 60000)
+  const days = Math.floor(minutes / 1440)
+  const hours = Math.floor((minutes % 1440) / 60)
+  const mins = minutes % 60
+  if (days > 0) return `${days}d ${hours}h`
+  if (hours > 0) return `${hours}h ${mins}m`
+  return `${mins}m`
+}
+
+function tokenText(count: number) {
+  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`
+  if (count >= 1_000) return `${(count / 1_000).toFixed(1)}k`
+  return `${count}`
+}
+
+async function setContext($: EngineInterface, fill: number | undefined) {
+  if (fill === undefined) return
+  await update($, context, () => fill)
+  if (fill < COMPACT_AT) await update($, isCompacting, () => false)
+}
+
+// The transcript is the one record of the whole session, from before this
+// module loaded too: recount it whenever a prompt starts or an answer ends.
+async function recount($: EngineInterface, transcript: string) {
+  if (!transcript) return
+  const script = `${$.plugin.root}/scripts/count-tokens.cjs`
+  const { exitCode, stdout } = await $.process.run(['node', script, transcript])
+  const counted = Number(stdout.trim())
+  if (exitCode === 0 && Number.isFinite(counted)) {
+    await update($, tokens, () => counted)
+  }
+  const usage = await $.session.usage()
+  await update($, usd, () => usage.cost?.usd ?? null)
+  await setContext($, usage.context.tokens)
+}
+
+async function compact($: EngineInterface) {
+  await update($, isCompacting, () => true)
+  try {
+    await $.session.compact()
+    const usage = await $.session.usage()
+    await setContext($, usage.context.tokens)
+  } catch {
+    // Refused while a turn runs: bring the warning back for another press.
+    await update($, isCompacting, () => false)
+    $.ui.toast('Espera a que termine la respuesta para compactar')
+  }
+}
+
+export const register: Register = on => {
+  on('session.start', async ($, e, next) => {
+    const result = await next(e)
+    const usage = await $.session.usage()
+    await update($, limits, () => usage.rateLimits)
+    await update($, usd, () => usage.cost?.usd ?? null)
+    await setContext($, usage.context.tokens)
+    return result
+  })
+
+  on('session.measure', async ($, e, next) => {
+    await update($, limits, () => e.rateLimits)
+    await update($, usd, () => e.cost?.usd ?? null)
+    await setContext($, e.context.tokens)
+    return next(e)
+  })
+
+  on('classic.UserPromptSubmit', async ($, e, next) => {
+    const result = await next(e)
+    void recount($, e.transcript_path).catch(() => undefined)
+    return result
+  })
+
+  on('classic.Stop', async ($, e, next) => {
+    const result = await next(e)
+    void recount($, e.transcript_path).catch(() => undefined)
+    return result
+  })
+
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    const current = await read($, limits)
+    const total = await read($, tokens)
+    const dollars = await read($, usd)
+    if (e.props.hasSurvey || (current.length === 0 && total === 0 && dollars === null)) {
+      return next(e)
+    }
+
+    const { Box, Button, Text } = $.ui.resolve(e)
+    const now = await $.clock.now()
+    const fill = await read($, context)
+    const showWarning = fill !== null && fill >= COMPACT_AT && !(await read($, isCompacting))
+
+    const usageRow = (
+      <Box flexDirection="row">
+        <Box flexDirection="row" flexGrow={1}>
+          {current.map((limit, i) => {
+            const percent = Math.max(0, Math.min(100, limit.percentUsed))
+            const filled = Math.round((percent / 100) * SEGMENTS)
+            const color = colorFor(limit.percentUsed)
+            const reset = resetText(limit.resetsAt, now)
+            return (
+              <Text key={limit.kind}>
+                {i > 0 ? <Text color={EMPTY_COLOR}>{'   │   '}</Text> : ''}
+                <Text dimColor>{LABELS[limit.kind] ?? limit.kind}  </Text>
+                <Text color={color}>{'■'.repeat(filled)}</Text>
+                <Text color={EMPTY_COLOR}>{'□'.repeat(SEGMENTS - filled)}  </Text>
+                <Text color={color} bold>{`${Math.round(limit.percentUsed)}%`}</Text>
+                {reset ? <Text dimColor>{`  ↻ ${reset}`}</Text> : ''}
+              </Text>
+            )
+          })}
+        </Box>
+        <Text>
+          <Text dimColor>{`${tokenText(total)} tokens`}</Text>
+          {dollars !== null ? (
+            <Text>
+              <Text color={EMPTY_COLOR}>{'  ·  '}</Text>
+              <Text bold>{`$${dollars.toFixed(2)}`}</Text>
+            </Text>
+          ) : (
+            ''
+          )}
+        </Text>
+      </Box>
+    )
+
+    if (!showWarning) {
+      return usageRow
+    }
+
+    return (
+      <Box flexDirection="column">
+        {usageRow}
+        {/* A rule of box-drawing dashes in the smallest type, clipped to one
+            line so it spans the band without wrapping or an ellipsis. */}
+        <Box height={1} overflow="hidden">
+          <Text size="caption" color={DIVIDER_COLOR} wrap="wrap">
+            {'─'.repeat(400)}
+          </Text>
+        </Box>
+        <Box flexDirection="row" alignItems="center" gap={2}>
+          <Box flexGrow={1} flexShrink={1}>
+            <Text wrap="truncate-end">
+              <Text color={WARNING_COLOR}>▲  </Text>
+              <Text dimColor>
+                {`El contexto va en ${tokenText(fill)}. Compactar lo resume y abarata las respuestas.`}
+              </Text>
+            </Text>
+          </Box>
+          {/* The app's own button alone: its slightly rounded rectangle is the
+              shape and size its hover highlight draws, with no frame around it. */}
+          <Box flexShrink={0}>
+            <Button key="compact" dimColor onPress={() => void compact($)}>
+              <Text size="footnote">Compactar</Text>
+            </Button>
+          </Box>
+        </Box>
+      </Box>
+    )
+  })
+}
