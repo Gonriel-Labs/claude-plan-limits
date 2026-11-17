@@ -12,12 +12,34 @@ Un mod que dibuja una banda compacta sobre el cuadro de texto de Claude Code:
 ▲  El contexto va en 333.2k. Compactar lo resume y abarata las respuestas.       [Compactar]
 ```
 
-## Requisitos
-
-- Claude Code con un plan de suscripción (los porcentajes de 5h y semanal solo existen con un plan).
-- Node.js instalado (el contador de tokens lo usa).
-
 ## Instalación
+
+> [!TIP]
+> ### La forma más fácil: pídeselo a Claude
+>
+> Abre Claude Code (la app de escritorio o la terminal), copia este mensaje, pégalo en el chat y envíalo:
+>
+> ```text
+> Instala el plugin plan-limits del marketplace de GitHub mark-quispe/claude-plan-limits, con alcance de usuario.
+> ```
+>
+> Claude hace el resto. Te pedirá permiso antes de ejecutar los comandos: acéptalo. Cuando termine, **abre una sesión nueva** y la barra aparecerá después de la primera respuesta.
+
+> [!NOTE]
+> **¿No tienes Node.js?** Pídeselo también a Claude en el mismo chat:
+>
+> ```text
+> Instala Node.js en mi computadora.
+> ```
+>
+> Si Windows muestra un aviso de administrador, acéptalo. Luego reinicia Claude Code. Sin Node.js la barra funciona igual, pero el contador de tokens se queda en 0.
+
+### Requisitos
+
+- Claude Code con un plan de suscripción (Pro o Max). Los porcentajes de 5h y semanal solo existen con un plan.
+- Node.js, para el contador de tokens.
+
+### Otras formas de instalarlo
 
 En el prompt de una sesión de Claude Code en la terminal:
 
