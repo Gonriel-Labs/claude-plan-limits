@@ -12,7 +12,7 @@ const usd = atom({ plugin: 'plan-limits', key: 'usd' } as const, null as number 
 const context = atom({ plugin: 'plan-limits', key: 'context' } as const, null as number | null)
 const isCompacting = atom({ plugin: 'plan-limits', key: 'isCompacting' } as const, false)
 
-const COMPACT_AT = 250_000
+const COMPACT_AT = 300_000
 
 const LABELS: Record<string, string> = {
   five_hour: '5h',
@@ -73,16 +73,19 @@ async function recount($: EngineInterface, transcript: string) {
   await setContext($, usage.context.tokens)
 }
 
+// Runs /compact itself, as if typed: queued while an answer is running and
+// run once the session is idle, instead of refused as a direct compaction is.
 async function compact($: EngineInterface) {
   await update($, isCompacting, () => true)
   try {
-    await $.session.compact()
+    await $.command.run({ command: 'compact' })
     const usage = await $.session.usage()
     await setContext($, usage.context.tokens)
-  } catch {
-    // Refused while a turn runs: bring the warning back for another press.
+  } catch (error) {
     await update($, isCompacting, () => false)
-    $.ui.toast('Espera a que termine la respuesta para compactar')
+    const reason = error instanceof Error ? error.message : String(error)
+    $.ui.log(`compact failed: ${reason}`, { to: 'debug' })
+    $.ui.toast(`No se pudo compactar: ${reason}`)
   }
 }
 

@@ -4,7 +4,7 @@ Un mod que dibuja una banda compacta sobre el cuadro de texto de Claude Code:
 
 - El uso de la ventana de 5 horas y la semanal de tu plan: mini barra de 5 segmentos, porcentaje y tiempo hasta el reinicio.
 - Los tokens de toda la sesión y su costo equivalente en dólares, al extremo derecho.
-- Cuando el contexto pasa de 250k, un aviso con un botón **Compactar** que resume la conversación.
+- Cuando el contexto pasa de 300k, un aviso con un botón **Compactar** que resume la conversación.
 
 ![La barra sobre el cuadro de texto de Claude Code: uso de 5h y semanal, tokens y costo de la sesión, y el aviso con el botón Compactar](docs/barra.png)
 
