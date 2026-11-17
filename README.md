@@ -6,11 +6,7 @@ Un mod que dibuja una banda compacta sobre el cuadro de texto de Claude Code:
 - Los tokens de toda la sesión y su costo equivalente en dólares, al extremo derecho.
 - Cuando el contexto pasa de 250k, un aviso con un botón **Compactar** que resume la conversación.
 
-```
-5h  ■■□□□  31%  ↻ 2h 50m   │   Semanal  ■■■■■  97%  ↻ 2d 19h        39.4M tokens  ·  $13.37
-──────────────────────────────────────────────────────────────────────────────────────────
-▲  El contexto va en 333.2k. Compactar lo resume y abarata las respuestas.       [Compactar]
-```
+![La barra sobre el cuadro de texto de Claude Code: uso de 5h y semanal, tokens y costo de la sesión, y el aviso con el botón Compactar](docs/barra.png)
 
 ## Instalación
 
