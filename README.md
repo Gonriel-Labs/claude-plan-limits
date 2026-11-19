@@ -6,7 +6,9 @@ Un mod que dibuja una banda compacta sobre el cuadro de texto de Claude Code:
 - Los tokens de toda la sesión y su costo equivalente en dólares, al extremo derecho.
 - Cuando el contexto pasa de 300k, un aviso con un botón **Compactar** que resume la conversación.
 
-![La barra sobre el cuadro de texto de Claude Code: uso de 5h y semanal, tokens y costo de la sesión, y el aviso con el botón Compactar](docs/barra.png)
+<p align="center">
+  <img src="docs/demo.svg" width="760" alt="Se escribe un mensaje y, mientras Claude responde, la barra sobre el cuadro de texto se actualiza: el uso de 5h sube a 40 %, el semanal pasa de 88 % en ámbar a 98 % en rojo, y los tokens y el costo de la sesión suben a 50.2M y $15.75. Luego aparece el aviso de que el contexto va en 360.5k; al pulsar Compactar el aviso desaparece.">
+</p>
 
 ## Instalación
 
@@ -59,4 +61,12 @@ La barra aparece en una sesión nueva, tras la primera respuesta.
 
 ```bash
 claude plugin uninstall plan-limits
+```
+
+## Regenerar la animación
+
+La animación de `docs/demo.svg` se arma con los mismos colores y textos de la barra real. Si cambias la barra, vuelve a generarla (necesita Python 3):
+
+```bash
+python tools/escena_demo.py
 ```
