@@ -8,6 +8,7 @@ declare module 'claude-code' {
       usd: number | null
       context: number | null
       isCompacting: boolean
+      showClock: boolean
     }
   }
 }

@@ -11,6 +11,9 @@ const usd = atom({ plugin: 'plan-limits', key: 'usd' } as const, null as number 
 // warning is pending (it hides the warning until the fill drops).
 const context = atom({ plugin: 'plan-limits', key: 'context' } as const, null as number | null)
 const isCompacting = atom({ plugin: 'plan-limits', key: 'isCompacting' } as const, false)
+// Whether the reset reads as the clock time it happens at instead of the time
+// left; a click on it toggles, kept in the store so every chat shows the same.
+const showClock = atom({ plugin: 'plan-limits', key: 'showClock' } as const, false)
 
 const COMPACT_AT = 300_000
 
@@ -44,6 +47,32 @@ function resetText(resetsAt: string | undefined, now: number) {
   if (days > 0) return `${days}d ${hours}h`
   if (hours > 0) return `${hours}h ${mins}m`
   return `${mins}m`
+}
+
+const DAYS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb']
+
+// The reset's local clock time, 12-hour with am/pm, and the day when it is not today.
+function clockText(resetsAt: string | undefined, now: number) {
+  if (!resetsAt) return ''
+  const at = Date.parse(resetsAt)
+  if (!Number.isFinite(at) || at <= now) return ''
+  const date = new Date(at)
+  const hours = date.getHours()
+  const time = `${hours % 12 || 12}:${String(date.getMinutes()).padStart(2, '0')} ${hours < 12 ? 'am' : 'pm'}`
+  return date.toDateString() === new Date(now).toDateString() ? time : `${DAYS[date.getDay()]} ${time}`
+}
+
+async function syncClock($: EngineInterface) {
+  const kept = await $.store.get('showClock')
+  if (typeof kept === 'boolean') await update($, showClock, () => kept)
+}
+
+async function toggleClock($: EngineInterface) {
+  // Flip what is saved, which another chat may have changed since this one synced.
+  const kept = await $.store.get('showClock')
+  const next = !(typeof kept === 'boolean' ? kept : await read($, showClock))
+  await update($, showClock, () => next)
+  await $.store.set('showClock', next)
 }
 
 function tokenText(count: number) {
@@ -134,10 +163,11 @@ export const register: Register = on => {
     const result = await next(e)
     redraw?.cancel()
     redraw = $.clock.every(REDRAW_MS, () => {
-      void setLimits($, [])
+      void Promise.all([setLimits($, []), syncClock($)])
         .catch(() => undefined)
         .then(() => $.ui.invalidate('ui.render'))
     })
+    await syncClock($).catch(() => undefined)
     const usage = await $.session.usage()
     await setLimits($, usage.rateLimits)
     await update($, usd, () => usage.cost?.usd ?? null)
@@ -147,6 +177,16 @@ export const register: Register = on => {
       .id()
       .then(id => recount($, id))
       .catch(() => undefined)
+    return result
+  })
+
+  // A surface joining is the app showing this chat again: catch up with what
+  // other chats saved meanwhile instead of waiting for the minute's sync.
+  on('session.attach', async ($, e, next) => {
+    const result = await next(e)
+    void Promise.all([setLimits($, []), syncClock($)])
+      .catch(() => undefined)
+      .then(() => $.ui.invalidate('ui.render'))
     return result
   })
 
@@ -179,6 +219,10 @@ export const register: Register = on => {
 
     const { Box, Button, Text } = $.ui.resolve(e)
     const now = await $.clock.now()
+    // Read the saved choice while drawing, not only on the minute's sync: a chat
+    // switched to draws what another chat chose last, at once.
+    const kept = await $.store.get('showClock').catch(() => undefined)
+    const asClock = typeof kept === 'boolean' ? kept : await read($, showClock)
     const fill = await read($, context)
     const showWarning = fill !== null && fill >= COMPACT_AT && !(await read($, isCompacting))
 
@@ -193,16 +237,26 @@ export const register: Register = on => {
             const percent = Math.max(0, Math.min(100, used))
             const filled = Math.round((percent / 100) * SEGMENTS)
             const color = colorFor(used)
-            const reset = resetText(limit.resetsAt, now)
+            const reset = asClock ? clockText(limit.resetsAt, now) : resetText(limit.resetsAt, now)
             return (
-              <Text key={limit.kind}>
-                {i > 0 ? <Text color={EMPTY_COLOR}>{'   │   '}</Text> : ''}
-                <Text dimColor>{LABELS[limit.kind] ?? limit.kind}  </Text>
-                <Text color={color}>{'■'.repeat(filled)}</Text>
-                <Text color={EMPTY_COLOR}>{'□'.repeat(SEGMENTS - filled)}  </Text>
-                <Text color={color} bold>{`${Math.round(used)}%`}</Text>
-                {reset ? <Text dimColor>{`  ↻ ${reset}`}</Text> : ''}
-              </Text>
+              <Box key={limit.kind} flexDirection="row">
+                <Text>
+                  {i > 0 ? <Text color={EMPTY_COLOR}>{'   │   '}</Text> : ''}
+                  <Text dimColor>{LABELS[limit.kind] ?? limit.kind}  </Text>
+                  <Text color={color}>{'■'.repeat(filled)}</Text>
+                  <Text color={EMPTY_COLOR}>{'□'.repeat(SEGMENTS - filled)}  </Text>
+                  <Text color={color} bold>{`${Math.round(used)}%`}</Text>
+                  {reset ? '  ' : ''}
+                </Text>
+                {/* The reset is the control: a click swaps time left and clock time. */}
+                {reset ? (
+                  <Button key={`reset-${limit.kind}`} plain dimColor onPress={() => void toggleClock($)}>
+                    {`↻ ${reset}`}
+                  </Button>
+                ) : (
+                  ''
+                )}
+              </Box>
             )
           })}
         </Box>
