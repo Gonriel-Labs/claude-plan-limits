@@ -83,7 +83,7 @@ async function setLimits($: EngineInterface, reported: Limit[]) {
   const merged = merge(Array.isArray(kept) ? (kept as Limit[]) : [], await read($, limits), reported)
   if (merged.length === 0) return
   await update($, limits, () => merged)
-  await $.store.set('limits', merged)
+  if (JSON.stringify(merged) !== JSON.stringify(kept)) await $.store.set('limits', merged)
 }
 
 async function setContext($: EngineInterface, fill: number | undefined) {
@@ -124,8 +124,8 @@ async function compact($: EngineInterface) {
 }
 
 // The band reads the clock only when it is drawn, and nothing redraws it while
-// the chat sits idle: redraw it every minute so the reset countdown runs and a
-// window that resets drops to 0 % without a new message.
+// the chat sits idle: every minute, take in what other chats saved and redraw,
+// so the countdown runs, a reset window drops to 0 % and every chat agrees.
 const REDRAW_MS = 60_000
 let redraw: { cancel: () => void } | undefined
 
@@ -133,7 +133,11 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const result = await next(e)
     redraw?.cancel()
-    redraw = $.clock.every(REDRAW_MS, () => $.ui.invalidate('ui.render'))
+    redraw = $.clock.every(REDRAW_MS, () => {
+      void setLimits($, [])
+        .catch(() => undefined)
+        .then(() => $.ui.invalidate('ui.render'))
+    })
     const usage = await $.session.usage()
     await setLimits($, usage.rateLimits)
     await update($, usd, () => usage.cost?.usd ?? null)

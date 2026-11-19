@@ -1,1 +1,1 @@
-{ "name": "plan-limits", "version": "0.1.3", "description": "Barra sobre el prompt con el uso del plan: ventana de 5 horas y semanal", "types": "./types/index.d.ts" }
+{ "name": "plan-limits", "version": "0.1.4", "description": "Barra sobre el prompt con el uso del plan: ventana de 5 horas y semanal", "types": "./types/index.d.ts" }
