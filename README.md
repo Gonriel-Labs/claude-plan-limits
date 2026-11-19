@@ -18,10 +18,17 @@ Un mod que dibuja una banda compacta sobre el cuadro de texto de Claude Code:
 > Abre Claude Code (la app de escritorio o la terminal), copia este mensaje, pégalo en el chat y envíalo:
 >
 > ```text
-> Instala el plugin plan-limits del marketplace de GitHub mark-quispe/claude-plan-limits, con alcance de usuario.
+> Instala el plugin plan-limits del marketplace de GitHub mark-quispe/claude-plan-limits, con alcance de usuario, y activa la actualización automática de ese marketplace (autoUpdate).
 > ```
 >
-> Claude hace el resto. Te pedirá permiso antes de ejecutar los comandos: acéptalo. Cuando termine, **abre una sesión nueva** y la barra aparecerá después de la primera respuesta.
+> Claude hace el resto. Te pedirá permiso antes de ejecutar los comandos: acéptalo. Cuando termine, **abre una sesión nueva** y la barra aparecerá después de la primera respuesta. Las mejoras te llegarán solas: se descargan mientras usas Claude Code y se activan la próxima vez que lo abras.
+
+> [!NOTE]
+> **¿Lo instalaste antes del 19 de noviembre de 2026?** Tu copia no se actualiza sola. Pégale esto a Claude una vez:
+>
+> ```text
+> Actualiza el plugin plan-limits y activa la actualización automática de su marketplace mark-quispe/claude-plan-limits (autoUpdate).
+> ```
 
 > [!NOTE]
 > **¿No tienes Node.js?** Pídeselo también a Claude en el mismo chat:
@@ -45,7 +52,7 @@ En el prompt de una sesión de Claude Code en la terminal:
 /plugin install plan-limits --marketplace mark-quispe/claude-plan-limits
 ```
 
-Responde `y` para agregar el marketplace y elige el alcance (usuario, para todas tus sesiones).
+Responde `y` para agregar el marketplace y elige el alcance (usuario, para todas tus sesiones). Para que se actualice solo: `/plugin` → pestaña **Marketplaces** → `claude-plan-limits` → activa la actualización automática.
 
 Desde una terminal:
 
