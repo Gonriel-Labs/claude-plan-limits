@@ -54,15 +54,36 @@ function tokenText(count: number) {
 
 // Rate limits are the account's, not the session's: the last ones seen are
 // kept across sessions so the band shows them before this session's first call.
-async function setLimits($: EngineInterface, next: Limit[]) {
-  if (next.length > 0) {
-    await update($, limits, () => next)
-    await $.store.set('limits', next)
-    return
+// A chat reopened reports the reading it last saw, which may be older than one
+// another chat saved since, so readings are merged per window, newest kept.
+function newer(a: Limit, b: Limit) {
+  const resetA = a.resetsAt ? Date.parse(a.resetsAt) : 0
+  const resetB = b.resetsAt ? Date.parse(b.resetsAt) : 0
+  // A later reset is a later window; in the same window usage only grows.
+  if (resetA !== resetB) return resetA > resetB ? a : b
+  return a.percentUsed >= b.percentUsed ? a : b
+}
+
+function merge(...readings: Limit[][]) {
+  const byKind = new Map<string, Limit>()
+  for (const reading of readings) {
+    for (const limit of reading) {
+      const seen = byKind.get(limit.kind)
+      byKind.set(limit.kind, seen ? newer(seen, limit) : limit)
+    }
   }
-  if ((await read($, limits)).length > 0) return
+  const order = ['five_hour', 'seven_day']
+  return [...byKind.values()].sort(
+    (a, b) => (order.indexOf(a.kind) + 1 || 99) - (order.indexOf(b.kind) + 1 || 99),
+  )
+}
+
+async function setLimits($: EngineInterface, reported: Limit[]) {
   const kept = await $.store.get('limits')
-  if (Array.isArray(kept)) await update($, limits, () => kept as Limit[])
+  const merged = merge(Array.isArray(kept) ? (kept as Limit[]) : [], await read($, limits), reported)
+  if (merged.length === 0) return
+  await update($, limits, () => merged)
+  await $.store.set('limits', merged)
 }
 
 async function setContext($: EngineInterface, fill: number | undefined) {
